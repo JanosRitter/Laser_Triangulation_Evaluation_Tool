@@ -1,0 +1,103 @@
+{
+    "simulation": {
+        "mode": "DOE_Square",
+        "plane_mode": "even_plane"
+    },
+    "camera": {
+        "img_width": 1280,
+        "img_height": 720,
+        "focal_length": 0.02,
+        "pixel_size": 5e-06,
+        "sensor_width": 0.0064,
+        "sensor_height": 0.0036000000000000003
+    },
+    "laser": {
+        "position": [
+            0.01,
+            0.0,
+            0.0
+        ],
+        "rotation_x_deg": 0.0,
+        "rotation_y_deg": 0.0,
+        "line_axis": [
+            1,
+            0,
+            0
+        ]
+    },
+    "doe": {
+        "nx": 20,
+        "ny": 20,
+        "fov_x_deg": 7.0,
+        "fov_y_deg": 7.0,
+        "center_point": true
+    },
+    "line_laser": {
+        "fov_deg": 12.0,
+        "samples": 1000
+    },
+    "multiline_laser": {
+        "count": 7,
+        "spacing_deg": 1.0
+    },
+    "plane": {
+        "z": 1.0,
+        "rot_x_deg": 0.0,
+        "rot_y_deg": 45.0
+    },
+    "sphere": {
+        "center": [
+            0.0,
+            0.0,
+            1.0
+        ],
+        "radius": 0.05,
+        "miss_mode": "fallback_plane",
+        "fallback_plane_z": 1.5
+    },
+    "rendering": {
+        "sigma": 3,
+        "noise_level": 0.05
+    },
+    "ground_truth": {
+        "file": "ground_truth_points.npy",
+        "columns": [
+            "index_0",
+            "index_1",
+            "x",
+            "y",
+            "z",
+            "u",
+            "v"
+        ],
+        "index_meaning": {
+            "Point": [
+                "ray_idx",
+                "unused"
+            ],
+            "DOE_Square": [
+                "i",
+                "j"
+            ],
+            "Line_Laser": [
+                "ray_idx",
+                "unused"
+            ],
+            "Multi_Line_Laser": [
+                "line_idx",
+                "ray_idx"
+            ]
+        },
+        "special_values": {
+            "unused": -1,
+            "doe_center_point": [
+                -1,
+                -1
+            ]
+        }
+    },
+    "results_summary": {
+        "num_visible": 401,
+        "num_missing": 0
+    }
+}

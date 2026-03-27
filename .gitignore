@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# System
+Thumbs.db
+.DS_Store
+
+# Output der Auswertung
+data/output/
+
+# optional große Rohdaten
+# data/input/images/
+# *.npy
+# *.png
