@@ -38,37 +38,44 @@ def cluster_axis_values(values, tol=30.0):
     return centers
 
 
-def get_centered_indices_for_cluster_count(n_clusters):
+def assign_axis_indices_relative_to_center(values, cluster_centers, center_value):
     """
-    Erzeugt zentrierte Indizes für Cluster.
+    Ordnet jedem Wert den Index des nächstgelegenen Clusterzentrums zu,
+    wobei die Indizes relativ zur bekannten Mittelpunktlage vergeben werden.
 
-    Beispiele:
-        4 -> [-2, -1, 1, 2]
-        5 -> [-2, -1, 0, 1, 2]
-    """
-    if n_clusters <= 0:
-        raise ValueError("n_clusters muss > 0 sein.")
+    Regeln:
+    - Cluster links/unten vom Mittelpunkt: negative Indizes
+    - Cluster rechts/oben vom Mittelpunkt: positive Indizes
+    - Mittelpunkt selbst wird später explizit auf 0 gesetzt
 
-    if n_clusters % 2 == 1:
-        half = n_clusters // 2
-        return np.arange(-half, half + 1, dtype=int)
-
-    half = n_clusters // 2
-    return np.array(list(range(-half, 0)) + list(range(1, half + 1)), dtype=int)
-
-
-def assign_axis_indices(values, cluster_centers):
-    """
-    Ordnet jedem Wert den Index des nächstgelegenen Clusterzentrums zu.
+    Dadurch bleibt die Indizierung korrekt, auch wenn auf einer Seite
+    mehr sichtbare Cluster fehlen als auf der anderen.
     """
     values = np.asarray(values, dtype=float)
     cluster_centers = np.asarray(cluster_centers, dtype=float)
 
+    # Cluster relativ zum Mittelpunkt trennen
+    left_centers = np.sort(cluster_centers[cluster_centers < center_value])
+    right_centers = np.sort(cluster_centers[cluster_centers > center_value])
+
+    # Mapping Clusterzentrum -> Index
+    cluster_index_map = {}
+
+    # Links: vom Mittelpunkt nach außen zählen: -1, -2, -3, ...
+    for i, c in enumerate(left_centers[::-1], start=1):
+        cluster_index_map[c] = -i
+
+    # Rechts: vom Mittelpunkt nach außen zählen: 1, 2, 3, ...
+    for i, c in enumerate(right_centers, start=1):
+        cluster_index_map[c] = i
+
+    # Für jeden Wert nächstgelegenes Cluster finden
     distances = np.abs(values[:, None] - cluster_centers[None, :])
     nearest = np.argmin(distances, axis=1)
+    nearest_centers = cluster_centers[nearest]
 
-    centered_indices = get_centered_indices_for_cluster_count(len(cluster_centers))
-    return centered_indices[nearest]
+    indices = np.array([cluster_index_map[c] for c in nearest_centers], dtype=int)
+    return indices
 
 
 def sort_result_by_indices(result):
@@ -103,9 +110,19 @@ def assign_doe_indices(coords, axis_tol=30.0):
     x_clusters = cluster_axis_values(coords_wo_center[:, 0], tol=axis_tol)
     y_clusters = cluster_axis_values(coords_wo_center[:, 1], tol=axis_tol)
 
-    idx_x = assign_axis_indices(coords[:, 0], x_clusters)
-    idx_y = assign_axis_indices(coords[:, 1], y_clusters)
+    idx_x = assign_axis_indices_relative_to_center(
+        values=coords[:, 0],
+        cluster_centers=x_clusters,
+        center_value=center_point[0]
+    )
 
+    idx_y = assign_axis_indices_relative_to_center(
+        values=coords[:, 1],
+        cluster_centers=y_clusters,
+        center_value=center_point[1]
+    )
+
+    # Mittelpunkt explizit auf (0, 0)
     idx_x[center_idx] = 0
     idx_y[center_idx] = 0
 

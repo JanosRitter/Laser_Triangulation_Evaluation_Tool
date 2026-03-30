@@ -19,6 +19,10 @@ Thumbs.db
 data/output/
 
 # optional große Rohdaten
-# data/input/images/
+data/input/images/
 # *.npy
 # *.png
+
+# Testdaten (generiert)
+tests/indexing/test_cases/
+tests/indexing/test_results/

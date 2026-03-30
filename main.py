@@ -17,7 +17,7 @@ from src.triangulation.triangulation import (
 def main():
     print("🔧 Test: Input + Detection + Fitting gestartet")
 
-    folder_name = "2026-03-27_09-01-31"
+    folder_name = "2026-03-27_14-26-00"
 
     arrays, input_folder_path = load_or_create_npy_folder(folder_name)
 
@@ -70,7 +70,7 @@ def main():
         
         triangulated_points = triangulate_indexed_points(indexed_lpc, metadata)
                
-        #print(triangulated_points)
+        print(triangulated_points[:,[0,1,5,6]])
         
         tri_output_name = f"{name}_triangulated_points"
         tri_save_path = save_result_for_input_folder(

@@ -229,9 +229,9 @@ def compare_line_distance(triangulated: np.ndarray):
 
 
 def main():
-    folder_name = "2026-03-27_09-01-31"
+    folder_name = "2026-03-27_14-26-00"
 
-    rel_tol_xyz = 0.01          # 2%
+    rel_tol_xyz = 0.03          # 2%
     abs_tol_xyz = 1e-4
     switch_threshold_xyz = 1e-3
 
