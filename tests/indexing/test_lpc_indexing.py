@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 
 import numpy as np
+import pytest
 
 from src.utils.lpc_indexing import assign_doe_indices, check_unique_indices
 
@@ -18,7 +19,7 @@ def get_project_root() -> Path:
     Bestimmt den Projekt-Root.
 
     Datei liegt in:
-    tests/indexing/lpc_indexing_test.py
+    tests/indexing/test_lpc_indexing.py
     """
     return Path(__file__).resolve().parents[2]
 
@@ -107,7 +108,6 @@ def evaluate_case(case_array: np.ndarray, coord_decimals: int = 6) -> dict:
     case_array Format:
         [idx_x, idx_y, x, y]
     """
-    true_indices = case_array[:, :2].astype(int)
     coords = case_array[:, 2:4].astype(float)
 
     predicted = assign_doe_indices(coords)
@@ -118,27 +118,9 @@ def evaluate_case(case_array: np.ndarray, coord_decimals: int = 6) -> dict:
         )
 
     pred_indices = predicted[:, :2].astype(int)
-    pred_coords = predicted[:, 2:4].astype(float)
 
     # Eindeutigkeit prüfen
     unique_predicted = check_unique_indices(pred_indices)
-
-    # Lookups auf Basis der Koordinaten bauen
-    true_lookup = {}
-    for row in case_array:
-        idx_x = int(row[0])
-        idx_y = int(row[1])
-        x = float(row[2])
-        y = float(row[3])
-        key = rounded_coord_key(x, y, decimals=coord_decimals)
-
-        if key in true_lookup:
-            raise ValueError(
-                f"Doppelte Koordinate in Ground Truth: {key}. "
-                f"Rundung evtl. zu grob oder Daten inkonsistent."
-            )
-
-        true_lookup[key] = (idx_x, idx_y)
 
     pred_lookup = build_index_lookup(predicted, decimals=coord_decimals)
 
@@ -274,7 +256,40 @@ def save_csv_summary(report: dict, results_dir: Path) -> Path:
 
 
 # ============================================================
-# MAIN
+# PYTEST-INTEGRATION
+# ============================================================
+CASE_DIR = get_test_cases_dir()
+CASE_FILES = discover_case_files(CASE_DIR)
+
+
+def test_indexing_cases_exist():
+    assert len(CASE_FILES) > 0, f"Keine .npy-Testfälle gefunden in: {CASE_DIR}"
+
+
+@pytest.mark.parametrize("case_path", CASE_FILES, ids=[p.stem for p in CASE_FILES])
+def test_lpc_indexing_case(case_path: Path):
+    case_array = load_case(case_path)
+    result = evaluate_case(case_array, coord_decimals=6)
+
+    assert result["predicted_indices_unique"], (
+        f"{case_path.stem}: Doppelte vorhergesagte Indizes gefunden."
+    )
+
+    assert result["num_missing_in_prediction"] == 0, (
+        f"{case_path.stem}: {result['num_missing_in_prediction']} Punkte "
+        f"konnten nicht zugeordnet werden."
+    )
+
+    assert result["num_wrong"] == 0, (
+        f"{case_path.stem}: {result['num_wrong']} Punkte falsch indiziert. "
+        f"Beispiele: {result['wrong_points'][:5]}"
+    )
+
+    assert result["passed"], f"{case_path.stem}: Test nicht bestanden."
+
+
+# ============================================================
+# BATCH-RUNNER (optional weiter nutzbar)
 # ============================================================
 def main():
     project_root = get_project_root()
