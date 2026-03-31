@@ -1,0 +1,31 @@
+INPUT_FOLDER = "2026-03-27_14-26-00"
+
+EVALUATION_MODE = "doe"
+# später:
+# "doe"
+# "trajectory"
+
+# Detection
+DETECTION_FACTOR = 4
+DETECTION_THRESHOLD = 100
+NEIGHBORHOOD_SIZE = 5
+DISTANCE_FACTOR_MIN = 0.2
+DISTANCE_FACTOR_MAX = 2.0
+BOUNDARY_FACTOR = 2.5
+
+# Fitting
+FIT_METHOD = "gaussian"
+# oder "threshold_centroid"
+
+LIMIT_FACTOR = 0.35
+THRESHOLD_FACTOR = 2.5
+SUBTRACT_BACKGROUND = True
+
+# Saving
+OVERWRITE_RESULTS = True
+
+# Plotting
+SHOW_PLOTS = True
+SAVE_PLOTS = True
+ZOOM_PLOTS = True
+Z_MIN_SPAN = 0.05
