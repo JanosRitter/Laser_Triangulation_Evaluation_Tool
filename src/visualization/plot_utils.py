@@ -268,3 +268,56 @@ def plot_triangulated_points_3d(
         plt.show()
     else:
         plt.close(fig)
+        
+def plot_uv_points(
+    uv_points: np.ndarray,
+    image_width: int,
+    image_height: int,
+    title: str = "Fitted UV Points",
+    save_path: str | Path | None = None,
+    show: bool = True,
+    annotate_frame_idx: bool = False
+):
+    import matplotlib.pyplot as plt
+    from pathlib import Path
+    import numpy as np
+
+    uv_points = np.asarray(uv_points)
+
+    if uv_points.ndim != 2 or uv_points.shape[1] < 3:
+        raise ValueError("uv_points muss die Form (n, 3) mit [u, v, frame_idx] haben.")
+
+    u = uv_points[:, 0].astype(float)
+    v = uv_points[:, 1].astype(float)
+    frame_idx = uv_points[:, 2].astype(int)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # y-Achse wie im Bild: oben links Ursprung -> fürs Plotten invertieren
+    v_plot = image_height - v
+
+    ax.scatter(u, v_plot, marker="x", s=40, linewidths=1.2, label=f"UV points ({len(uv_points)})")
+
+    if annotate_frame_idx:
+        for uu, vv, idx in zip(u, v_plot, frame_idx):
+            ax.text(uu + 3, vv + 3, str(idx), fontsize=7)
+
+    ax.set_xlim(0, image_width)
+    ax.set_ylim(0, image_height)
+    ax.set_aspect("equal")
+    ax.set_xlabel("u [px]")
+    ax.set_ylabel("v [px] (plot coordinates)")
+    ax.set_title(title)
+    ax.legend()
+    plt.tight_layout()
+
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=200)
+        print(f"  🖼️ UV-Plot gespeichert: {save_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)

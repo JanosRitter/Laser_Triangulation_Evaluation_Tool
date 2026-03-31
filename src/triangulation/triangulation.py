@@ -48,11 +48,6 @@ def get_doe_angle_for_index(idx: int, n: int, fov_deg: float, has_center_point: 
     """
     Berechnet den Winkel eines DOE-Strahls entlang einer Achse
     aus seinem zentrierten Index.
-
-    Unterstützt:
-    - ungerade Raster: z. B. [-2, -1, 0, 1, 2]
-    - gerade Raster mit zusätzlichem Zentrum:
-      z. B. [-2, -1, 1, 2] plus separater Zentralstrahl (0,0)
     """
     if n <= 0:
         raise ValueError("DOE-Achsengröße n muss > 0 sein.")
@@ -66,12 +61,8 @@ def get_doe_angle_for_index(idx: int, n: int, fov_deg: float, has_center_point: 
     step_deg = fov_deg / (n - 1)
 
     if n % 2 == 1:
-        # ungerades Gitter: Winkel direkt proportional zum Index
         angle_deg = idx * step_deg
     else:
-        # gerades Gitter: kein 0-Punkt im Raster, Zentrum optional separat
-        # Beispiel n=4, idx in [-2,-1,1,2]:
-        # -> [-F/2, -F/6, F/6, F/2]
         angle_deg = np.sign(idx) * (abs(idx) - 0.5) * step_deg
 
     return np.deg2rad(angle_deg)
@@ -219,5 +210,95 @@ def triangulate_indexed_points(indexed_points: np.ndarray, metadata: dict) -> np
 
     if len(results) == 0:
         return np.empty((0, 8), dtype=np.float32)
+
+    return np.array(results, dtype=np.float32)
+
+
+# ============================================================
+# TRAJECTORY TRIANGULATION
+# ============================================================
+def triangulate_single_trajectory_point(
+    u: float,
+    v: float,
+    laser_pos: np.ndarray,
+    metadata: dict
+) -> tuple[np.ndarray, float]:
+    """
+    Trianguliert einen einzelnen Trajectory-Messpunkt.
+
+    Der Laserstrahl wird durch:
+    - die Laserposition des aktuellen Frames
+    - die globale Basisrichtung aus den Metadaten
+
+    beschrieben.
+
+    Returns
+    -------
+    point_3d : np.ndarray, shape (3,)
+    line_distance : float
+    """
+    camera_pos = np.array([0.0, 0.0, 0.0], dtype=float)
+
+    laser_pos = np.asarray(laser_pos, dtype=float)
+    laser_dir = get_laser_base_direction_from_metadata(metadata)
+    cam_dir = get_camera_ray_from_pixel(u, v, metadata)
+
+    point_3d, line_distance = find_closest_point_between_lines(
+        laser_pos, laser_dir,
+        camera_pos, cam_dir
+    )
+
+    return point_3d, line_distance
+
+
+def triangulate_trajectory_uv_points(
+    uv_points: np.ndarray,
+    frame_rows_by_idx: dict[int, dict],
+    metadata: dict
+) -> np.ndarray:
+    """
+    Trianguliert trajectory-basierte Punkte.
+
+    Erwartetes Format von uv_points:
+        [u, v, frame_idx]
+
+    Rückgabeformat:
+        [x, y, z, u, v, frame_idx]
+    """
+    results = []
+
+    for row in uv_points:
+        u = float(row[0])
+        v = float(row[1])
+        frame_idx = int(row[2])
+
+        if frame_idx not in frame_rows_by_idx:
+            raise KeyError(f"frame_idx {frame_idx} nicht in frame_table gefunden.")
+
+        frame_row = frame_rows_by_idx[frame_idx]
+        laser_pos = np.array([
+            frame_row["laser_x"],
+            frame_row["laser_y"],
+            frame_row["laser_z"],
+        ], dtype=float)
+
+        point_3d, _line_distance = triangulate_single_trajectory_point(
+            u=u,
+            v=v,
+            laser_pos=laser_pos,
+            metadata=metadata
+        )
+
+        results.append([
+            point_3d[0],
+            point_3d[1],
+            point_3d[2],
+            u,
+            v,
+            frame_idx
+        ])
+
+    if len(results) == 0:
+        return np.empty((0, 6), dtype=np.float32)
 
     return np.array(results, dtype=np.float32)
