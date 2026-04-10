@@ -1,5 +1,5 @@
-EVALUATION_MODE = "doe"
-INPUT_FOLDER = "2026-03-27_14-45-44"
+EVALUATION_MODE = "trajectory"
+INPUT_FOLDER = "2026-04-07_12-07-20"
 # später:
 # "doe"
 # "trajectory"

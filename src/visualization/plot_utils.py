@@ -133,50 +133,101 @@ def plot_image_with_peaks_and_fit(
         
 from pathlib import Path
 import numpy as np
+import matplotlib.pyplot as plt
+
+
+def _set_axes_3d_compact(
+    ax,
+    x,
+    y,
+    z,
+    xy_margin_factor=0.06,
+    z_margin_factor=0.04,
+    z_window=None,
+    box_aspect=(1.0, 1.0, 0.72),
+):
+    """
+    Setzt die Achsen für einen 3D-Plot so, dass:
+    - x und y gleich skaliert bleiben
+    - z auf den tatsächlich relevanten Bereich begrenzt werden kann
+    - die Plot-Box flacher dargestellt werden kann, ohne die Daten zu verändern
+
+    Parameters
+    ----------
+    ax : matplotlib 3D axis
+    x, y, z : array-like
+        Punktkoordinaten
+    xy_margin_factor : float
+        Relativer Rand für x/y
+    z_margin_factor : float
+        Relativer Rand für z
+    z_window : tuple[float, float] | None
+        Falls gesetzt: explizite z-Grenzen (z_min, z_max)
+        Beispiel: (0.92, 1.00)
+    box_aspect : tuple[float, float, float]
+        Relative Box-Darstellung im Bild, z.B. (1, 1, 0.7)
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    z = np.asarray(z, dtype=float)
+
+    x_min, x_max = np.min(x), np.max(x)
+    y_min, y_max = np.min(y), np.max(y)
+
+    if z_window is None:
+        z_min, z_max = np.min(z), np.max(z)
+    else:
+        z_min, z_max = z_window
+
+    x_span = x_max - x_min
+    y_span = y_max - y_min
+    z_span = z_max - z_min
+
+    if x_span == 0:
+        x_span = 1e-6
+    if y_span == 0:
+        y_span = 1e-6
+    if z_span == 0:
+        z_span = 1e-6
+
+    # x/y gleich behandeln
+    xy_span = max(x_span, y_span)
+    xy_half = 0.5 * xy_span * (1 + xy_margin_factor)
+
+    x_center = 0.5 * (x_min + x_max)
+    y_center = 0.5 * (y_min + y_max)
+
+    z_center = 0.5 * (z_min + z_max)
+    z_half = 0.5 * z_span * (1 + z_margin_factor)
+
+    ax.set_xlim(x_center - xy_half, x_center + xy_half)
+    ax.set_ylim(y_center - xy_half, y_center + xy_half)
+    ax.set_zlim(z_center - z_half, z_center + z_half)
+
+    ax.set_box_aspect(box_aspect)
 
 
 def plot_triangulated_points_3d(
     triangulated_points: np.ndarray,
-    title: str = "Triangulated 3D Points",
     save_path: str | Path | None = None,
     show: bool = True,
-    z_min_span: float = 0.05,
-    margin_factor: float = 0.1,
     elev: float = 25,
-    azim: float = -60
+    azim: float = -60,
+    invert_z: bool = True,
+    save_extra_views: bool = False,
+    marker_size: float = 12,
+    cmap: str = "viridis",
+    z_window: tuple[float, float] | None = None,
+    box_aspect: tuple[float, float, float] = (1.0, 1.0, 0.5),
+    orthographic: bool = True,
 ):
     """
-    Plottet triangulierte 3D-Punkte als 3D-Scatterplot.
+    Plottet triangulierte 3D-Punkte in kompakter Form für Berichte.
 
-    Erwartetes Format von triangulated_points:
+    Erwartetes Format:
         [idx_x, idx_y, x, y, z, u, v, line_distance]
     oder allgemeiner:
         Spalten 2, 3, 4 enthalten x, y, z.
-
-    Eigenschaften:
-    - automatische Achsenskalierung
-    - Färbung nach z-Wert
-    - Mindestspanne für die z-Achse, damit nahezu ebene Punktmengen
-      nicht wie eine zufällige Punktewolke aussehen
-
-    Parameters
-    ----------
-    triangulated_points : np.ndarray
-        Array mit mindestens 5 Spalten, wobei Spalte 2,3,4 = x,y,z.
-    title : str
-        Plot-Titel.
-    save_path : str | Path | None
-        Optionaler Speicherpfad.
-    show : bool
-        Ob der Plot angezeigt werden soll.
-    z_min_span : float
-        Mindestspanne der z-Achse.
-    margin_factor : float
-        Relativer Rand um die Daten.
-    elev : float
-        Elevation des 3D-Plots.
-    azim : float
-        Azimut des 3D-Plots.
     """
     triangulated_points = np.asarray(triangulated_points)
 
@@ -192,82 +243,96 @@ def plot_triangulated_points_3d(
     y = triangulated_points[:, 3].astype(float)
     z = triangulated_points[:, 4].astype(float)
 
-    fig = plt.figure(figsize=(9, 7))
-    ax = fig.add_subplot(111, projection="3d")
+    def _make_plot(local_elev, local_azim, out_path=None):
+        fig = plt.figure(figsize=(7.6, 5.3))
+        ax = fig.add_subplot(111, projection="3d")
 
-    scatter = ax.scatter(
-        x, y, z,
-        c=z,
-        cmap="viridis",
-        s=50,
-        depthshade=True
-    )
+        if orthographic:
+            ax.set_proj_type("ortho")
 
-    cbar = fig.colorbar(scatter, ax=ax, pad=0.1)
-    cbar.set_label("z")
+        scatter = ax.scatter(
+            x, y, z,
+            c=z,
+            cmap=cmap,
+            s=marker_size,
+            depthshade=False,
+            edgecolors="none",
+            alpha=0.9
+        )
 
-    # ---------------------------
-    # Automatische Achsenskalierung
-    # ---------------------------
-    x_min, x_max = np.min(x), np.max(x)
-    y_min, y_max = np.min(y), np.max(y)
-    z_min, z_max = np.min(z), np.max(z)
+        # Position der Hauptachse holen
+        pos = ax.get_position()
+        
+        # Neue Achse für Colorbar (rechts daneben)
+        cbar_width = 0.018
+        cbar_pad = 0.13
+        
+        cbar_height = pos.height * 0.75   # kürzer als Plot
+        cbar_y = pos.y0 + (pos.height - cbar_height) / 2
+        
+        cax = fig.add_axes([
+            pos.x1 + cbar_pad,   # rechts vom Plot
+            cbar_y,              # vertikal zentriert
+            cbar_width,
+            cbar_height
+        ])
+        
+        cbar = fig.colorbar(scatter, cax=cax)
+        cbar.set_label("z in m")
 
-    x_span = x_max - x_min
-    y_span = y_max - y_min
-    z_span = z_max - z_min
+        _set_axes_3d_compact(
+            ax,
+            x, y, z,
+            xy_margin_factor=0.06,
+            z_margin_factor=0.03,
+            z_window=z_window,
+            box_aspect=box_aspect,
+        )
 
-    # Fallback bei degenerierten Achsen
-    if x_span == 0:
-        x_span = 1e-6
-    if y_span == 0:
-        y_span = 1e-6
-    if z_span == 0:
-        z_span = 1e-6
+        if invert_z:
+            ax.invert_zaxis()
 
-    x_margin = x_span * margin_factor
-    y_margin = y_span * margin_factor
+        ax.set_xlabel("x in m", labelpad=8)
+        ax.set_ylabel("y in m", labelpad=8)
+        ax.set_zlabel("z in m", labelpad=1)
 
-    # Für z eine Mindestspanne erzwingen
-    effective_z_span = max(z_span, z_min_span)
-    z_margin = effective_z_span * margin_factor
+        ax.view_init(elev=local_elev, azim=local_azim)
 
-    x_center = 0.5 * (x_min + x_max)
-    y_center = 0.5 * (y_min + y_max)
-    z_center = 0.5 * (z_min + z_max)
+        # Ruhigeres Layout
+        ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.35)
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
 
-    ax.set_xlim(x_min - x_margin, x_max + x_margin)
-    ax.set_ylim(y_min - y_margin, y_max + y_margin)
-    ax.set_zlim(
-        z_center - 0.5 * effective_z_span - z_margin,
-        z_center + 0.5 * effective_z_span + z_margin
-    )
+        plt.tight_layout()
 
-    # ---------------------------
-    # Achsenbeschriftung / Ansicht
-    # ---------------------------
-    ax.set_title(title)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
+        if out_path is not None:
+            out_path = Path(out_path)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(out_path, dpi=350, bbox_inches="tight")
+            print(f"  🖼️ 3D-Plot gespeichert: {out_path}")
 
-    ax.view_init(elev=elev, azim=azim)
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
 
-    plt.tight_layout()
+    _make_plot(elev, azim, save_path)
 
-    # ---------------------------
-    # Speichern
-    # ---------------------------
-    if save_path is not None:
+    if save_extra_views and save_path is not None:
         save_path = Path(save_path)
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(save_path, dpi=200)
-        print(f"  🖼️ 3D-Plot gespeichert: {save_path}")
+        stem = save_path.stem
+        suffix = save_path.suffix if save_path.suffix else ".png"
+        parent = save_path.parent
 
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
+        extra_views = [
+            (20, -35, parent / f"{stem}_view1{suffix}"),
+            (25, -90, parent / f"{stem}_view2{suffix}"),
+            (55, -60, parent / f"{stem}_view3{suffix}"),
+        ]
+
+        for e, a, p in extra_views:
+            _make_plot(e, a, p)
         
 def plot_uv_points(
     uv_points: np.ndarray,

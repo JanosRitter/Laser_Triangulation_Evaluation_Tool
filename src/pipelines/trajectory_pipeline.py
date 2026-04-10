@@ -29,6 +29,9 @@ from src.visualization.plot_utils import (
     plot_triangulated_points_3d,
     plot_uv_points,
 )
+from src.visualization.surface_plot import (
+    plot_surface_from_triangulated_points,
+)
 from src.utils.path_utils import get_output_folder_for_input
 
 
@@ -144,7 +147,7 @@ def run_trajectory_folder(input_folder: str):
     5. lokale Fit-Koordinate in globale Bildkoordinate umrechnen
     6. trajectory-Punkte triangulieren
     7. Ergebnis in plot-kompatiblem Format speichern
-    8. UV-Plot und 3D-Plot erzeugen
+    8. UV-Plot, 3D-Punktplot und Surface-Plot erzeugen
     """
     print("🔧 Trajectory Evaluation gestartet")
 
@@ -239,16 +242,27 @@ def run_trajectory_folder(input_folder: str):
             annotate_frame_idx=True,
         )
 
-        # 3D-Plot mit bestehender Funktion
+        # 3D-Punktplot
         plot_3d_path = output_folder / "trajectory_triangulated_3d_plot.png"
 
         plot_triangulated_points_3d(
             triangulated_points=triangulated_points,
-            title="Trajectory Triangulated 3D Points",
             save_path=plot_3d_path,
             show=SHOW_PLOTS,
-            z_min_span=Z_MIN_SPAN,
         )
+
+        # Surface-Plot
+        surface_plot_path = output_folder / "trajectory_surface_plot.png"
+        
+        try:
+            plot_surface_from_triangulated_points(
+                triangulated_points=triangulated_points,
+                save_path=surface_plot_path,
+                show=SHOW_PLOTS,
+                title="Reconstructed Surface",
+            )
+        except ValueError as exc:
+            print(f"  ⚠️ Surface-Plot übersprungen: {exc}")
 
     print("\n✅ Trajectory Evaluation abgeschlossen")
 
