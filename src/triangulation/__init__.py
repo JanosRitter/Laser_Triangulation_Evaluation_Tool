@@ -1,12 +1,5 @@
-from __future__ import annotations
-
 from src.triangulation.metadata_io import load_metadata
 from src.triangulation.camera_rays import get_camera_ray_from_pixel
-from src.triangulation.laser_rays.doe_rays import (
-    get_laser_base_direction_from_metadata,
-    get_doe_angle_for_index,
-    get_doe_direction_from_index,
-)
 from src.triangulation.laser_triangulation import (
     find_closest_point_between_lines,
     triangulate_ray_pair,
@@ -15,13 +8,9 @@ from src.triangulation.laser_triangulation import (
     triangulate_trajectory_uv_points,
 )
 
-
 __all__ = [
     "load_metadata",
     "get_camera_ray_from_pixel",
-    "get_laser_base_direction_from_metadata",
-    "get_doe_angle_for_index",
-    "get_doe_direction_from_index",
     "find_closest_point_between_lines",
     "triangulate_ray_pair",
     "triangulate_indexed_points",

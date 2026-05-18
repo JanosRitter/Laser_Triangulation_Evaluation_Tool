@@ -1,6 +1,8 @@
 from src.config.config import EVALUATION_MODE, INPUT_FOLDER
+
 from src.pipelines.doe_pipeline import run_doe_folder
 from src.pipelines.trajectory_pipeline import run_trajectory_folder
+from src.pipelines.robot_trajectory_pipeline import run_robot_trajectory_folder
 
 
 def main():
@@ -8,8 +10,13 @@ def main():
 
     if EVALUATION_MODE == "doe":
         run_doe_folder(INPUT_FOLDER)
+
     elif EVALUATION_MODE == "trajectory":
         run_trajectory_folder(INPUT_FOLDER)
+
+    elif EVALUATION_MODE == "robot_trajectory":
+        run_robot_trajectory_folder(INPUT_FOLDER)
+
     else:
         raise ValueError(f"Unbekannter EVALUATION_MODE: {EVALUATION_MODE}")
 

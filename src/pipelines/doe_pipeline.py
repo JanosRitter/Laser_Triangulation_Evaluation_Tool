@@ -29,6 +29,9 @@ from src.triangulation.triangulation import (
     load_metadata,
     triangulate_indexed_points,
 )
+from src.visualization.surface_plot import (
+    plot_surface_from_triangulated_points,
+)
 
 
 def process_single_doe_image(name, arr, input_folder_path, metadata):
@@ -116,11 +119,20 @@ def process_single_doe_image(name, arr, input_folder_path, metadata):
         plot_3d_path = output_folder / f"{name}_triangulated_3d_plot.png"
         plot_triangulated_points_3d(
             triangulated_points=triangulated_points,
-            title=f"Triangulated 3D Points: {name}",
             save_path=plot_3d_path,
             show=SHOW_PLOTS,
-            z_min_span=Z_MIN_SPAN
-        )
+        )# Surface-Plot
+        surface_plot_path = output_folder / "trajectory_surface_plot.png"
+        
+        try:
+            plot_surface_from_triangulated_points(
+                triangulated_points=triangulated_points,
+                save_path=surface_plot_path,
+                show=SHOW_PLOTS,
+                title="Reconstructed Surface",
+            )
+        except ValueError as exc:
+            print(f"  ⚠️ Surface-Plot übersprungen: {exc}")
 
     return {
         "name": name,

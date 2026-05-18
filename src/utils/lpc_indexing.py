@@ -91,7 +91,7 @@ def check_unique_indices(indices):
     return len(unique_indices) == len(indices)
 
 
-def assign_doe_indices(coords, axis_tol=30.0):
+def assign_doe_indices(coords, axis_tol=5.0):
     """
     Erwartet coords als Array der Form (N, 2) mit [x, y].
 
