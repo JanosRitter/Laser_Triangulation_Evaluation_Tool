@@ -9,6 +9,7 @@ from src.config.config import (
 )
 
 from src.io.io_utils import save_result_for_input_folder
+from src.io.ray_io import save_rays
 from src.io.trajectory_io import (
     resolve_trajectory_input_folder,
     load_run_metadata,
@@ -17,13 +18,35 @@ from src.io.trajectory_io import (
     iter_valid_crop_frames,
 )
 
+from src.utils.path_utils import get_output_folder_for_input
+
 from src.fitting.fit_methods import (
     fit_single_slice_gaussian,
     fit_single_slice_threshold_centroid,
 )
 
+from src.triangulation.camera_rays import get_camera_ray_from_pixel
 from src.triangulation.laser_rays.robot_trajectory_rays import (
     get_robot_trajectory_laser_ray_from_frame_row,
+)
+from src.triangulation.metadata_io import load_robot_to_camera_calibration
+from src.triangulation.laser_triangulation import triangulate_ray_pair
+
+from src.config.config import (
+    FIT_METHOD,
+    THRESHOLD_FACTOR,
+    OVERWRITE_RESULTS,
+    SHOW_PLOTS,
+    SAVE_PLOTS,
+)
+
+from src.visualization.plot_utils import (
+    plot_triangulated_points_3d,
+    plot_uv_points,
+)
+
+from src.visualization.surface_plot import (
+    plot_surface_from_triangulated_points,
 )
 
 
@@ -91,25 +114,63 @@ def build_robot_trajectory_uv_result(
     frame_idx = int(frame_row["frame_idx"])
     return np.array([global_uv[0], global_uv[1], frame_idx], dtype=float)
 
+def reformat_robot_trajectory_points_for_plot(
+    triangulated_points_raw: np.ndarray,
+) -> np.ndarray:
+    """
+    Wandelt Robot-Trajectory-Triangulation von
+
+        [x_C, y_C, z_C, u, v, frame_idx, line_distance]
+
+    in plot-kompatibles Format:
+
+        [frame_idx, line_distance, x_C, y_C, z_C, u, v]
+    """
+    triangulated_points_raw = np.asarray(triangulated_points_raw)
+
+    if triangulated_points_raw.ndim != 2 or triangulated_points_raw.shape[1] != 7:
+        raise ValueError(
+            "triangulated_points_raw muss die Form (n, 7) mit "
+            "[x_C, y_C, z_C, u, v, frame_idx, line_distance] haben."
+        )
+
+    x = triangulated_points_raw[:, 0]
+    y = triangulated_points_raw[:, 1]
+    z = triangulated_points_raw[:, 2]
+    u = triangulated_points_raw[:, 3]
+    v = triangulated_points_raw[:, 4]
+    frame_idx = triangulated_points_raw[:, 5]
+    line_distance = triangulated_points_raw[:, 6]
+
+    return np.column_stack([
+        frame_idx,
+        line_distance,
+        x,
+        y,
+        z,
+        u,
+        v,
+    ]).astype(np.float32)
+
 
 def run_robot_trajectory_folder(input_folder: str):
     """
     Neue echte Robot-Trajectory-Auswertung.
 
-    Aktueller Stand:
+    Ablauf:
     1. run_metadata.json laden
     2. frame_table.csv laden
-    3. valide Crop-Frames iterieren
-    4. jeden Crop fitten
-    5. lokale Fit-Koordinate in globale Bildkoordinate umrechnen
-    6. UV-Ergebnisse speichern
-    7. vorbereitend pro Frame die neue Robot-Trajectory-Ray-Funktion aufrufen
+    3. robot_to_camera_transform.json laden
+    4. valide Crop-Frames iterieren
+    5. jeden Crop fitten
+    6. lokale Fit-Koordinate in globale Bildkoordinate umrechnen
+    7. Kameraray im Kamera-KS rekonstruieren
+    8. Laserray aus Roboterpose rekonstruieren und ins Kamera-KS transformieren
+    9. Ray-Paare triangulieren
+    10. UV-Ergebnisse, Rays und triangulierte Punkte speichern
 
     Noch nicht enthalten:
     - OpenCV-Kameramodell
-    - robot_to_camera_transform.json
-    - echte Laser-Ray-Konstruktion
-    - finale Triangulation
     """
     print("🔧 Robot-Trajectory Evaluation gestartet")
 
@@ -118,6 +179,10 @@ def run_robot_trajectory_folder(input_folder: str):
     frame_table = load_frame_table(folder_path)
     valid_rows = filter_valid_crop_rows(frame_table)
 
+    robot_to_camera_calibration = load_robot_to_camera_calibration(
+        run_folder=folder_path,
+    )
+
     print("\n📂 Eingelesene Robot-Trajectory-Daten:")
     print(f"  Input-Ordner: {folder_path}")
     print(f"  Gesamtframes: {len(frame_table)}")
@@ -125,6 +190,9 @@ def run_robot_trajectory_folder(input_folder: str):
     print(f"  Fit-Methode: {FIT_METHOD}")
 
     uv_results = []
+    camera_ray_results = []
+    laser_ray_results = []
+    triangulated_results = []
     ray_build_errors = []
 
     for frame_row, crop_array in iter_valid_crop_frames(folder_path):
@@ -156,13 +224,80 @@ def run_robot_trajectory_folder(input_folder: str):
         print(f"  🌍 Global u,v: u={global_uv[0]:.2f}, v={global_uv[1]:.2f}")
 
         # ------------------------------------------------------------
-        # Platzhalter für neue Laser-Ray-Konstruktion
+        # Kameraray im Kamera-KS
+        # ------------------------------------------------------------
+        camera_origin_C = np.array([0.0, 0.0, 0.0], dtype=float)
+
+        camera_direction_C = get_camera_ray_from_pixel(
+            u=float(global_uv[0]),
+            v=float(global_uv[1]),
+            metadata={
+                "camera": {
+                    "img_width": robot_to_camera_calibration["metadata"]["intrinsics"]["img_width"],
+                    "img_height": robot_to_camera_calibration["metadata"]["intrinsics"]["img_height"],
+                    "focal_length": robot_to_camera_calibration["metadata"]["intrinsics"]["fx"],
+                    "pixel_size": 1,
+                }
+            },
+        )
+
+        camera_ray_results.append(
+            {
+                "frame_idx": frame_idx,
+                "origin": camera_origin_C,
+                "direction": camera_direction_C,
+                "uv": global_uv,
+            }
+        )
+
+        # ------------------------------------------------------------
+        # Laserray aus Roboterpose, transformiert ins Kamera-KS
         # ------------------------------------------------------------
         try:
-            _laser_origin, _laser_direction = get_robot_trajectory_laser_ray_from_frame_row(
+            laser_origin_C, laser_direction_C = get_robot_trajectory_laser_ray_from_frame_row(
                 frame_row=frame_row,
-                T_C_R=None,
+                calibration=robot_to_camera_calibration,
             )
+
+            laser_ray_results.append(
+                {
+                    "frame_idx": frame_idx,
+                    "origin": laser_origin_C,
+                    "direction": laser_direction_C,
+                    "uv": global_uv,
+                }
+            )
+
+            # ------------------------------------------------------------
+            # Triangulation im Kamera-KS
+            # ------------------------------------------------------------
+            point_C, line_distance = triangulate_ray_pair(
+                laser_origin=laser_origin_C,
+                laser_direction=laser_direction_C,
+                camera_origin=camera_origin_C,
+                camera_direction=camera_direction_C,
+            )
+
+            triangulated_results.append(
+                [
+                    point_C[0],
+                    point_C[1],
+                    point_C[2],
+                    global_uv[0],
+                    global_uv[1],
+                    frame_idx,
+                    line_distance,
+                ]
+            )
+
+            print(
+                f"  📐 Trianguliert C: "
+                f"x={point_C[0]:+.6f}, "
+                f"y={point_C[1]:+.6f}, "
+                f"z={point_C[2]:+.6f}, "
+                f"ray_dist={line_distance * 1000.0:.3f} mm"
+            )
+
         except NotImplementedError as exc:
             ray_build_errors.append(
                 {
@@ -171,7 +306,6 @@ def run_robot_trajectory_folder(input_folder: str):
                 }
             )
 
-            # Nicht pro Frame endlos laut werden
             if len(ray_build_errors) == 1:
                 print(f"  ⚠️ Laser-Ray-Konstruktion noch nicht implementiert: {exc}")
 
@@ -180,6 +314,11 @@ def run_robot_trajectory_folder(input_folder: str):
     else:
         uv_results_array = np.vstack(uv_results)
 
+    if len(triangulated_results) == 0:
+        triangulated_results_array = np.empty((0, 7), dtype=float)
+    else:
+        triangulated_results_array = np.asarray(triangulated_results, dtype=float)
+
     uv_save_path = save_result_for_input_folder(
         uv_results_array,
         input_folder=folder_path,
@@ -187,12 +326,83 @@ def run_robot_trajectory_folder(input_folder: str):
         overwrite=OVERWRITE_RESULTS,
     )
 
+    tri_save_path = save_result_for_input_folder(
+        triangulated_results_array,
+        input_folder=folder_path,
+        file_name="robot_trajectory_triangulated_points_C",
+        overwrite=OVERWRITE_RESULTS,
+    )
+
+    triangulated_points = reformat_robot_trajectory_points_for_plot(
+        triangulated_results_array
+    )
+    
+    tri_plot_save_path = save_result_for_input_folder(
+        triangulated_points,
+        input_folder=folder_path,
+        file_name="robot_trajectory_triangulated_points_C_plot_format",
+        overwrite=OVERWRITE_RESULTS,
+    )
+    
     print(f"\n💾 UV-Ergebnisse gespeichert: {uv_save_path}")
+    print(f"💾 Triangulierte Punkte gespeichert: {tri_save_path}")
+    print(f"💾 Plot-kompatible Punkte gespeichert: {tri_plot_save_path}")
+    
+    if SAVE_PLOTS:
+        output_folder = get_output_folder_for_input(folder_path)
+    
+        intrinsics = robot_to_camera_calibration["metadata"]["intrinsics"]
+    
+        uv_plot_path = output_folder / "robot_trajectory_uv_plot.png"
+    
+        plot_uv_points(
+            uv_points=uv_results_array,
+            image_width=int(intrinsics["img_width"]),
+            image_height=int(intrinsics["img_height"]),
+            title="Robot-Trajectory Fitted UV Points",
+            save_path=uv_plot_path,
+            show=SHOW_PLOTS,
+            annotate_frame_idx=True,
+        )
+    
+        plot_3d_path = output_folder / "robot_trajectory_triangulated_3d_plot_C.png"
+    
+        plot_triangulated_points_3d(
+            triangulated_points=triangulated_points,
+            save_path=plot_3d_path,
+            show=SHOW_PLOTS,
+        )
+    
+        surface_plot_path = output_folder / "robot_trajectory_surface_plot_C.png"
+    
+        try:
+            plot_surface_from_triangulated_points(
+                triangulated_points=triangulated_points,
+                save_path=surface_plot_path,
+                show=SHOW_PLOTS,
+                title="Robot-Trajectory Reconstructed Surface in Camera Frame",
+            )
+        except ValueError as exc:
+            print(f"  ⚠️ Surface-Plot übersprungen: {exc}")
+
+    output_folder = get_output_folder_for_input(folder_path)
+
+    camera_ray_paths = save_rays(
+        rays=camera_ray_results,
+        output_dir=output_folder,
+        stem="robot_trajectory_camera_rays_C",
+    )
+
+    laser_ray_paths = save_rays(
+        rays=laser_ray_results,
+        output_dir=output_folder,
+        stem="robot_trajectory_laser_rays_C",
+    )
 
     if ray_build_errors:
         print(
             "\nℹ️ Laser-Ray-Konstruktion wurde vorbereitet, ist aber noch nicht "
-            "implementiert."
+            "vollständig implementiert."
         )
         print(f"  Betroffene Frames: {len(ray_build_errors)}")
 
@@ -203,5 +413,14 @@ def run_robot_trajectory_folder(input_folder: str):
         "frame_table": frame_table,
         "valid_rows": valid_rows,
         "uv_results": uv_results_array,
+        "uv_save_path": uv_save_path,
+        "camera_ray_results": camera_ray_results,
+        "laser_ray_results": laser_ray_results,
+        "camera_ray_paths": camera_ray_paths,
+        "laser_ray_paths": laser_ray_paths,
+        "triangulated_results": triangulated_results_array,
+        "triangulated_save_path": tri_save_path,
         "ray_build_errors": ray_build_errors,
+        "triangulated_points": triangulated_points,
+        "triangulated_plot_save_path": tri_plot_save_path,
     }

@@ -22,6 +22,7 @@ def get_camera_ray_from_pixel(
     camera = metadata["camera"]
 
     img_width = camera["img_width"]
+    print("image_widht:", img_width)
     img_height = camera["img_height"]
     focal_length = camera["focal_length"]
     pixel_size = camera["pixel_size"]
@@ -32,5 +33,5 @@ def get_camera_ray_from_pixel(
     x_img = (u - cx) * pixel_size
     y_img = -(v - cy) * pixel_size
 
-    direction = np.array([x_img, y_img, focal_length], dtype=float)
+    direction = np.array([x_img, y_img, -focal_length], dtype=float)
     return direction / np.linalg.norm(direction)
