@@ -341,7 +341,7 @@ def plot_uv_points(
     title: str = "Fitted UV Points",
     save_path: str | Path | None = None,
     show: bool = True,
-    annotate_frame_idx: bool = False
+    annotate_frame_idx: bool = False,
 ):
     import matplotlib.pyplot as plt
     from pathlib import Path
@@ -356,24 +356,83 @@ def plot_uv_points(
     v = uv_points[:, 1].astype(float)
     frame_idx = uv_points[:, 2].astype(int)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    # y-Achse wie im Bild: oben links Ursprung -> fürs Plotten invertieren
+    # Plot-Koordinaten: y nach oben
     v_plot = image_height - v
 
-    ax.scatter(u, v_plot, marker="x", s=40, linewidths=1.2, label=f"UV points ({len(uv_points)})")
+    fig, ax = plt.subplots(figsize=(10, 6))
 
+    ax.scatter(
+        u,
+        v_plot,
+        marker="x",
+        s=40,
+        linewidths=1.2,
+        label=f"UV points ({len(uv_points)})",
+    )
+
+    # ------------------------------------------------------------
+    # Automatische Achslimits um die Datenpunkte
+    # ------------------------------------------------------------
+    u_min = float(np.min(u))
+    u_max = float(np.max(u))
+    v_min = float(np.min(v_plot))
+    v_max = float(np.max(v_plot))
+
+    span_u = u_max - u_min
+    span_v = v_max - v_min
+
+    min_span_px = 1.0
+
+    if span_u < min_span_px:
+        center_u = 0.5 * (u_min + u_max)
+        span_u = min_span_px
+        u_min = center_u - 0.5 * span_u
+        u_max = center_u + 0.5 * span_u
+
+    if span_v < min_span_px:
+        center_v = 0.5 * (v_min + v_max)
+        span_v = min_span_px
+        v_min = center_v - 0.5 * span_v
+        v_max = center_v + 0.5 * span_v
+
+    margin_factor = 0.20
+
+    margin_u = margin_factor * span_u
+    margin_v = margin_factor * span_v
+
+    ax.set_xlim(u_min - margin_u, u_max + margin_u)
+    ax.set_ylim(v_min - margin_v, v_max + margin_v)
+
+    # ------------------------------------------------------------
+    # Automatisch skalierter Textoffset
+    # ------------------------------------------------------------
     if annotate_frame_idx:
-        for uu, vv, idx in zip(u, v_plot, frame_idx):
-            ax.text(uu + 3, vv + 3, str(idx), fontsize=7)
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
 
-    ax.set_xlim(0, image_width)
-    ax.set_ylim(0, image_height)
-    ax.set_aspect("equal")
+        visible_span_u = xlim[1] - xlim[0]
+        visible_span_v = ylim[1] - ylim[0]
+
+        text_dx = 0.015 * visible_span_u
+        text_dy = 0.015 * visible_span_v
+
+        for uu, vv, idx in zip(u, v_plot, frame_idx):
+            ax.text(
+                uu + text_dx,
+                vv + text_dy,
+                str(idx),
+                fontsize=7,
+                ha="left",
+                va="bottom",
+            )
+
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel("u [px]")
     ax.set_ylabel("v [px] (plot coordinates)")
     ax.set_title(title)
+    ax.grid(True)
     ax.legend()
+
     plt.tight_layout()
 
     if save_path is not None:

@@ -1,5 +1,5 @@
 EVALUATION_MODE = "robot_trajectory"
-INPUT_FOLDER = "20260520_100303_robot_measurement"
+INPUT_FOLDER = "20260521_101517_robot_measurement"
 # später:
 # "doe"
 # "trajectory"

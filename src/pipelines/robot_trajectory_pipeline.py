@@ -49,6 +49,14 @@ from src.visualization.surface_plot import (
     plot_surface_from_triangulated_points,
 )
 
+from src.visualization.interactive_point_cloud import (
+    save_interactive_point_cloud_html,
+)
+from src.triangulation.camera_intrinsics import (
+    load_camera_intrinsics_for_run,
+    camera_ray_from_pixel_with_intrinsics,
+)
+
 
 def fit_single_crop(
     crop_array: np.ndarray,
@@ -188,6 +196,19 @@ def run_robot_trajectory_folder(input_folder: str):
     print(f"  Gesamtframes: {len(frame_table)}")
     print(f"  Valide Crop-Frames: {len(valid_rows)}")
     print(f"  Fit-Methode: {FIT_METHOD}")
+    
+    camera_intrinsics = load_camera_intrinsics_for_run(
+        run_folder=folder_path,
+        fallback_intrinsics=robot_to_camera_calibration["metadata"]["intrinsics"],
+    )
+    
+    print("\n📷 Kamera-Intrinsics:")
+    print(f"  Quelle: {camera_intrinsics['source']}")
+    print(f"  fx={camera_intrinsics['fx']}")
+    print(f"  fy={camera_intrinsics['fy']}")
+    print(f"  cx={camera_intrinsics['cx']}")
+    print(f"  cy={camera_intrinsics['cy']}")
+    print(f"  dist_coeffs={camera_intrinsics['dist_coeffs']}")
 
     uv_results = []
     camera_ray_results = []
@@ -228,26 +249,10 @@ def run_robot_trajectory_folder(input_folder: str):
         # ------------------------------------------------------------
         camera_origin_C = np.array([0.0, 0.0, 0.0], dtype=float)
 
-        camera_direction_C = get_camera_ray_from_pixel(
+        camera_direction_C = camera_ray_from_pixel_with_intrinsics(
             u=float(global_uv[0]),
             v=float(global_uv[1]),
-            metadata={
-                "camera": {
-                    "img_width": robot_to_camera_calibration["metadata"]["intrinsics"]["img_width"],
-                    "img_height": robot_to_camera_calibration["metadata"]["intrinsics"]["img_height"],
-                    "focal_length": robot_to_camera_calibration["metadata"]["intrinsics"]["fx"],
-                    "pixel_size": 1,
-                }
-            },
-        )
-
-        camera_ray_results.append(
-            {
-                "frame_idx": frame_idx,
-                "origin": camera_origin_C,
-                "direction": camera_direction_C,
-                "uv": global_uv,
-            }
+            intrinsics=camera_intrinsics,
         )
 
         # ------------------------------------------------------------
@@ -381,6 +386,15 @@ def run_robot_trajectory_folder(input_folder: str):
                 save_path=surface_plot_path,
                 show=SHOW_PLOTS,
                 title="Robot-Trajectory Reconstructed Surface in Camera Frame",
+            )
+            
+            interactive_plot_path = output_folder / "interactive_point_cloud.html"
+
+            save_interactive_point_cloud_html(
+                triangulated_points=triangulated_points,
+                output_path=interactive_plot_path,
+                title="Robot trajectory point cloud",
+                annotate_frame_idx=False,
             )
         except ValueError as exc:
             print(f"  ⚠️ Surface-Plot übersprungen: {exc}")

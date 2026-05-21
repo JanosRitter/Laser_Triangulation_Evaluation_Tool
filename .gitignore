@@ -16,7 +16,7 @@ Thumbs.db
 .DS_Store
 
 # Output der Auswertung
-data/output/
+data/
 
 # optional große Rohdaten
 data/input/images/
